@@ -12,6 +12,7 @@ function App() {
   });
   const [message, setMessage] = useState('');
   const [appointments, setAppointments] = useState([]);
+  const [editingAppointmentId, setEditingAppointmentId] = useState(null);
 
   // 1. Fetch doctors and appointments on load
   useEffect(() => {
@@ -32,18 +33,57 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/appointments', formData);
-      setMessage(response.data.message);
+      if (editingAppointmentId) {
+        const response = await axios.put(`http://localhost:5000/appointments/${editingAppointmentId}`, formData);
+        setMessage(response.data.message);
+      } else {
+        const response = await axios.post('http://localhost:5000/appointments', formData);
+        setMessage(response.data.message);
+      }
       
       // Reset form
       setFormData({ doctor_id: '', patient_name: '', appointment_date: '', appointment_time: '' });
+      setEditingAppointmentId(null);
       
       // Refresh the table!
       fetchAppointments(); 
     } catch (err) {
-      setMessage("Error: " + (err.response?.data?.error || "Booking failed"));
+      setMessage('Error: ' + (err.response?.data?.error || 'Request failed'));
     }
     // REMOVED: The duplicate axios.post call that was here
+  };
+
+  const handleEditClick = (appointment) => {
+    setEditingAppointmentId(appointment.id);
+    setFormData({
+      doctor_id: String(appointment.doctor_id),
+      patient_name: appointment.patient_name,
+      appointment_date: new Date(appointment.appointment_date).toISOString().split('T')[0],
+      appointment_time: String(appointment.appointment_time).slice(0, 5)
+    });
+    setMessage('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingAppointmentId(null);
+    setFormData({ doctor_id: '', patient_name: '', appointment_date: '', appointment_time: '' });
+    setMessage('');
+  };
+
+  const handleDelete = async (appointmentId) => {
+    const isConfirmed = window.confirm('Are you sure you want to delete this appointment?');
+    if (!isConfirmed) return;
+
+    try {
+      const response = await axios.delete(`http://localhost:5000/appointments/${appointmentId}`);
+      setMessage(response.data.message);
+      if (editingAppointmentId === appointmentId) {
+        handleCancelEdit();
+      }
+      fetchAppointments();
+    } catch (err) {
+      setMessage('Error: ' + (err.response?.data?.error || 'Delete failed'));
+    }
   };
 
   return (
@@ -51,7 +91,9 @@ function App() {
       
       {/* SECTION: Booking Form */}
       <div style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', marginBottom: '40px' }}>
-        <h2 style={{ textAlign: 'center', color: '#333' }}>Book an Appointment</h2>
+        <h2 style={{ textAlign: 'center', color: '#333' }}>
+          {editingAppointmentId ? 'Edit Appointment' : 'Book an Appointment'}
+        </h2>
         
         {message && <p style={{ padding: '10px', backgroundColor: '#e1f5fe', color: '#01579b', borderRadius: '5px', textAlign: 'center' }}>{message}</p>}
 
@@ -99,9 +141,16 @@ function App() {
             </div>
           </div>
 
-          <button type="submit" style={{ padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', marginTop: '10px' }}>
-            Confirm Appointment
-          </button>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <button type="submit" style={{ flex: 1, padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px' }}>
+              {editingAppointmentId ? 'Update Appointment' : 'Confirm Appointment'}
+            </button>
+            {editingAppointmentId && (
+              <button type="button" onClick={handleCancelEdit} style={{ padding: '12px 16px', background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '16px' }}>
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -115,6 +164,7 @@ function App() {
               <th style={{ padding: '12px' }}>Doctor</th>
               <th style={{ padding: '12px' }}>Date</th>
               <th style={{ padding: '12px' }}>Time</th>
+              <th style={{ padding: '12px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -123,13 +173,23 @@ function App() {
                 <tr key={app.id} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: '12px' }}>{app.patient_name}</td>
                   <td style={{ padding: '12px' }}>{app.doctor_name}</td>
-                  <td style={{ padding: '12px' }}>{new Date(app.appointment_date).toLocaleDateString()}</td>
-                  <td style={{ padding: '12px' }}>{app.appointment_time}</td>
+                  <td style={{ padding: '12px' }}>{new Date(app.appointment_date).toLocaleDateString('en-GB')}</td>
+                  <td style={{ padding: '12px' }}>{String(app.appointment_time).slice(0, 5)}</td>
+                  <td style={{ padding: '12px' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button type="button" onClick={() => handleEditClick(app)} style={{ padding: '6px 10px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                        Edit
+                      </button>
+                      <button type="button" onClick={() => handleDelete(app.id)} style={{ padding: '6px 10px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>No appointments scheduled yet.</td>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>No appointments scheduled yet.</td>
               </tr>
             )}
           </tbody>
